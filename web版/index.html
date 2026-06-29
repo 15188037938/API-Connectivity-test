@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模型可用性测试工具-------暖君api开放平台提供。严禁盗用</title>
+<style>
+:root {
+  --bg: #1e1e2e; --fg: #cdd6f4; --entry-bg: #313244;
+  --select-bg: #45475a; --accent: #89b4fa; --success: #a6e3a1;
+  --error: #f38ba8; --hover: #74c7ec; --disabled: #585b70;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; }
+button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 16px; font-weight: bold; font-size: 13px; transition: .15s; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn-primary:hover:not(:disabled) { background: var(--hover); }
+input, select { background: var(--entry-bg); color: var(--fg); border: 1px solid var(--select-bg); border-radius: 4px; padding: 6px 10px; font-size: 13px; outline: none; }
+input:focus { border-color: var(--accent); }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--select-bg); border-radius: 4px; }
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+#top-bar { padding: 8px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--select-bg); }
+#top-bar label { white-space: nowrap; }
+#top-bar input { flex: 1; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+.panel { display: flex; flex-direction: column; padding: 8px; overflow: hidden; }
+.panel-title { font-weight: bold; font-size: 15px; margin-bottom: 6px; }
+
+#left-panel { width: 220px; min-width: 180px; border-right: 1px solid var(--select-bg); }
+#mid-panel { flex: 1; border-right: 1px solid var(--select-bg); }
+#right-panel { width: 340px; min-width: 250px; }
+
+/* Provider list */
+#prov-actions { display: flex; gap: 4px; margin-bottom: 6px; }
+#prov-actions button { font-size: 12px; padding: 4px 10px; }
+#provider-list { flex: 1; overflow-y: auto; }
+.prov-item { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.prov-item:hover { background: var(--select-bg); }
+.prov-item .cb { font-size: 16px; width: 20px; text-align: center; cursor: pointer; }
+
+/* Model table */
+#model-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+#model-count { font-size: 12px; color: #a6adc8; }
+#stats-pass { color: var(--success); font-size: 12px; }
+#stats-fail { color: var(--error); font-size: 12px; }
+#model-table-wrap { flex: 1; overflow: auto; }
+#model-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#model-table th { background: var(--select-bg); text-align: left; padding: 6px 8px; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+#model-table td { padding: 4px 8px; border-bottom: 1px solid #2a2a3e; }
+#model-table tr:hover td { background: rgba(69,71,117,.3); }
+#model-table .td-cb { width: 32px; text-align: center; cursor: pointer; }
+#model-table .td-seq { width: 36px; text-align: center; cursor: pointer; color: var(--accent); }
+#model-table .td-seq:hover { text-decoration: underline; }
+#model-table .td-prov { white-space: nowrap; }
+#model-table .td-status { text-align: center; white-space: nowrap; }
+.status-testing { color: #f9e2af; }
+.status-ok { color: var(--success); }
+.status-fail { color: var(--error); }
+.status-skip { color: #6c7086; }
+
+/* Buttons in left panel */
+#action-btns { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+#action-btns button { width: 100%; text-align: center; font-size: 13px; }
+
+/* Result log */
+#result-log { flex: 1; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; padding: 8px; background: var(--entry-bg); border-radius: 4px; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+
+/* Dialog overlay */
+#dialog-overlay { display: none; position: fixed; inset:0; background: rgba(0,0,0,.6); z-index:100; justify-content:center; align-items:center; }
+#dialog-box { background: var(--bg); border: 1px solid var(--select-bg); border-radius: 8px; padding: 20px; width: 460px; }
+#dialog-box h3 { margin-bottom: 12px; }
+#dialog-box .field { margin-bottom: 10px; }
+#dialog-box .field label { display: inline-block; width: 80px; }
+#dialog-box .field input { width: calc(100% - 88px); }
+#dialog-box .btns { text-align: right; margin-top: 12px; gap: 8px; display: flex; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-bar">
+    <label>测试 Prompt:</label>
+    <input id="prompt-input" value="hi">
+  </div>
+  <div id="main">
+    <!-- 左: 提供商 -->
+    <div id="left-panel" class="panel">
+      <div class="panel-title">提供商列表</div>
+      <div id="prov-actions">
+        <button class="btn-primary" onclick="openProviderDialog()">+ 添加</button>
+        <button onclick="editProvider()" id="btn-edit" disabled>✎ 编辑</button>
+        <button onclick="deleteProvider()" id="btn-del" disabled>✕ 删除</button>
+      </div>
+      <div id="provider-list"></div>
+      <div id="action-btns">
+        <button class="btn-primary" onclick="fetchModels()" id="btn-fetch" disabled>📥 拉取选中提供商模型</button>
+        <button class="btn-primary" onclick="testSelected()" id="btn-test-sel" disabled>▶ 测试选中模型</button>
+        <button class="btn-primary" onclick="testAll()" id="btn-test-all" disabled>▶▶ 测试全部模型</button>
+        <button onclick="stopTesting()" id="btn-stop" disabled style="background:var(--error);color:var(--bg)">⏹ 停止测试</button>
+      </div>
+    </div>
+    <!-- 中: 模型列表 -->
+    <div id="mid-panel" class="panel">
+      <div id="model-header">
+        <label><input type="checkbox" id="select-all-models" onchange="toggleSelectAll()"> 全选</label>
+        <span id="model-count">(0 个)</span>
+        <span id="stats-pass"></span>
+        <span id="stats-fail"></span>
+      </div>
+      <div id="model-table-wrap">
+        <table id="model-table">
+          <thead>
+            <tr><th style="width:32px">✓</th><th style="width:36px">#</th><th>提供商</th><th>模型名称</th><th style="width:100px">测试状态</th></tr>
+          </thead>
+          <tbody id="model-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 右: 结果 -->
+    <div id="right-panel" class="panel">
+      <div class="panel-title">测试结果</div>
+      <div id="result-log"></div>
+    </div>
+  </div>
+</div>
+<!-- Dialog -->
+<div id="dialog-overlay">
+  <div id="dialog-box">
+    <h3 id="dialog-title">添加提供商</h3>
+    <div class="field"><label>提供商名称:</label><input id="dlg-name" placeholder="如 DeepSeek"></div>
+    <div class="field"><label>API 地址:</label><input id="dlg-url" value="https://api.deepseek.com/v1"></div>
+    <div class="field"><label>API Key:</label><input id="dlg-key" type="password" placeholder="sk-..."></div>
+    <div class="btns">
+      <button onclick="closeDialog()">取消</button>
+      <button class="btn-primary" onclick="saveDialog()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 状态 ──
+let providers = [];
+let selectedProviders = new Set();
+let models = [];          // [{id, provider}]
+let selectedModels = new Set();
+let testing = false;
+let stopFlag = false;
+let dialogCallback = null;
+
+// ── 加载/保存配置 ──
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem('model_tester_providers');
+    if (raw) {
+      const data = JSON.parse(raw);
+      providers = data.providers || [];
+      selectedProviders = new Set(data.selected || []);
+    }
+  } catch(e) { console.warn('load config error', e); }
+}
+function saveConfig() {
+  try {
+    localStorage.setItem('model_tester_providers', JSON.stringify({
+      providers,
+      selected: [...selectedProviders]
+    }));
+  } catch(e) {}
+}
+
+// ── 时间戳 ──
+function ts() {
+  const d = new Date();
+  return d.toTimeString().slice(0, 8);
+}
+
+// ── 日志 ──
+function log(msg, level) {
+  const el = document.getElementById('result-log');
+  const line = document.createElement('div');
+  line.textContent = `[${ts()}] ${msg}`;
+  if (level === 'success') line.style.color = 'var(--success)';
+  else if (level === 'error') line.style.color = 'var(--error)';
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── 提供商渲染 ──
+function renderProviders() {
+  const list = document.getElementById('provider-list');
+  list.innerHTML = '';
+  providers.forEach(p => {
+    const checked = selectedProviders.has(p.name) ? '✅' : '⬜';
+    const div = document.createElement('div');
+    div.className = 'prov-item';
+    div.dataset.name = p.name;
+    div.innerHTML = `<span class="cb" data-name="${p.name}">${checked}</span><span>${p.name}</span>`;
+    div.querySelector('.cb').onclick = (e) => { e.stopPropagation(); toggleProv(p.name); };
+    div.onclick = () => selectProvider(p.name);
+    list.appendChild(div);
+  });
+  document.getElementById('btn-fetch').disabled = providers.length === 0;
+  renderModels();
+}
+
+function toggleProv(name) {
+  if (selectedProviders.has(name)) selectedProviders.delete(name);
+  else selectedProviders.add(name);
+  saveConfig();
+  renderProviders();
+}
+
+function selectProvider(name) {
+  // single select for edit/delete
+  document.querySelectorAll('.prov-item').forEach(el => el.style.background = '');
+  const el = document.querySelector(`.prov-item[data-name="${name}"]`);
+  if (el) el.style.background = 'var(--select-bg)';
+  document.getElementById('btn-edit').disabled = false;
+  document.getElementById('btn-del').disabled = false;
+}
+
+function getSelectedProv() {
+  const el = document.querySelector('.prov-item[style*="var(--select-bg)"]');
+  return el ? el.dataset.name : null;
+}
+
+// ── 提供商 Dialog ──
+function openProviderDialog(data) {
+  document.getElementById('dialog-overlay').style.display = 'flex';
+  document.getElementById('dialog-title').textContent = data ? '编辑提供商' : '添加提供商';
+  document.getElementById('dlg-name').value = data ? data.name : '';
+  document.getElementById('dlg-url').value = data ? data.url : 'https://api.deepseek.com/v1';
+  document.getElementById('dlg-key').value = data ? data.key : '';
+  dialogCallback = data;
+}
+function closeDialog() {
+  document.getElementById('dialog-overlay').style.display = 'none';
+  dialogCallback = null;
+}
+function saveDialog() {
+  const name = document.getElementById('dlg-name').value.trim();
+  const url = document.getElementById('dlg-url').value.trim().replace(/\/+$/, '');
+  const key = document.getElementById('dlg-key').value.trim();
+  if (!name || !url || !key) { alert('请填写完整'); return; }
+  if (dialogCallback) {
+    // edit
+    const oldName = dialogCallback.name;
+    const idx = providers.findIndex(p => p.name === oldName);
+    if (idx >= 0) {
+      providers[idx] = { name, url, key };
+      if (oldName !== name) {
+        selectedProviders.delete(oldName);
+        selectedProviders.add(name);
+        models.forEach(m => { if (m.provider === oldName) m.provider = name; });
+      }
+    }
+    log(`✎ 已更新提供商: ${oldName} → ${name}`);
+  } else {
+    // add
+    if (providers.find(p => p.name === name)) { alert('提供商名称已存在'); return; }
+    providers.push({ name, url, key });
+    log(`📋 已添加提供商: ${name} (${url})`);
+  }
+  saveConfig();
+  renderProviders();
+  closeDialog();
+}
+
+function editProvider() {
+  const name = getSelectedProv();
+  if (!name) return;
+  const p = providers.find(x => x.name === name);
+  if (p) openProviderDialog({ ...p });
+}
+
+function deleteProvider() {
+  const name = getSelectedProv();
+  if (!name) return;
+  if (!confirm(`确定删除提供商「${name}」？`)) return;
+  providers = providers.filter(p => p.name !== name);
+  models = models.filter(m => m.provider !== name);
+  selectedProviders.delete(name);
+  selectedModels = new Set(models.filter(m => selectedModels.has(m.id)).map(m => m.id));
+  saveConfig();
+  renderProviders();
+  log(`🗑 已删除提供商: ${name}`);
+}
+
+// ── 模型渲染 ──
+function renderModels() {
+  const tbody = document.getElementById('model-tbody');
+  tbody.innerHTML = '';
+  models.forEach((m, idx) => {
+    const checked = selectedModels.has(m.id) ? '✅' : '⬜';
+    const tr = document.createElement('tr');
+    tr.dataset.id = m.id;
+    tr.innerHTML = `
+      <td class="td-cb" data-action="toggle">${checked}</td>
+      <td class="td-seq" data-action="quicktest">${idx+1}</td>
+      <td class="td-prov">${escHtml(m.provider)}</td>
+      <td>${escHtml(m.id)}</td>
+      <td class="td-status" id="st-${escHtml(m.id)}"></td>`;
+    tr.querySelector('[data-action="toggle"]').onclick = () => toggleModel(m.id);
+    tr.querySelector('[data-action="quicktest"]').onclick = () => { selectedModels = new Set([m.id]); renderModels(); testSelected(); };
+    tbody.appendChild(tr);
+  });
+  document.getElementById('model-count').textContent = `(${models.length} 个)`;
+  document.getElementById('btn-test-sel').disabled = models.length === 0;
+  document.getElementById('btn-test-all').disabled = models.length === 0;
+  updateStats();
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function toggleModel(id) {
+  if (selectedModels.has(id)) selectedModels.delete(id);
+  else selectedModels.add(id);
+  renderModels();
+}
+
+function toggleSelectAll() {
+  const checked = document.getElementById('select-all-models').checked;
+  selectedModels = checked ? new Set(models.map(m => m.id)) : new Set();
+  renderModels();
+}
+
+function updateStats() {
+  const rows = document.querySelectorAll('#model-tbody tr');
+  let pass = 0, fail = 0;
+  rows.forEach(tr => {
+    const st = tr.querySelector('.td-status').textContent.trim();
+    if (st === '✅ 正常') pass++;
+    else if (st === '❌ 失败') fail++;
+  });
+  document.getElementById('stats-pass').textContent = pass ? `✅成功 ${pass}` : '';
+  document.getElementById('stats-fail').textContent = fail ? `❌失败 ${fail}` : '';
+}
+
+function setModelStatus(id, status) {
+  const el = document.getElementById('st-' + escHtml(id));
+  if (!el) return;
+  const map = { testing: '⏳ 测试中...', ok: '✅ 正常', fail: '❌ 失败', skip: '⚠ 跳过' };
+  el.textContent = map[status] || '';
+  el.className = 'td-status status-' + status;
+  updateStats();
+}
+
+// ── 拉取模型 ──
+async function fetchModels() {
+  if (selectedProviders.size === 0) { alert('请先勾选要拉取模型的提供商'); return; }
+  const provs = providers.filter(p => selectedProviders.has(p.name));
+  document.getElementById('btn-fetch').disabled = true;
+
+  models = [];
+  selectedModels = new Set();
+  renderModels();
+
+  log(`📡 开始拉取 ${provs.length} 个提供商的模型列表...`);
+
+  let allModels = [];
+  let errors = [];
+
+  for (const prov of provs) {
+    try {
+      const resp = await fetch(`${prov.url}/models`, {
+        headers: { 'Authorization': `Bearer ${prov.key}` },
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!resp.ok) { errors.push(`${prov.name}: HTTP ${resp.status}`); continue; }
+      const data = await resp.json();
+      const raw = data.data || [];
+      raw.forEach(m => allModels.push({ id: m.id || 'unknown', provider: prov.name }));
+      log(`  ✅ ${prov.name}: ${raw.length} 个模型`);
+    } catch(e) {
+      errors.push(`${prov.name}: ${e.message}`);
+    }
+  }
+
+  // dedup
+  const seen = new Set();
+  models = allModels.filter(m => {
+    const key = m.id + '|' + m.provider;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+  models.sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id));
+
+  renderModels();
+  log(`\n📥 拉取完成: 共 ${models.length} 个模型`);
+  errors.forEach(e => log(`  ❌ ${e}`, 'error'));
+  document.getElementById('btn-fetch').disabled = false;
+}
+
+// ── 测试 ──
+async function testSelected() {
+  if (selectedModels.size === 0) { alert('请先勾选要测试的模型'); return; }
+  await runTests([...selectedModels]);
+}
+
+async function testAll() {
+  if (models.length === 0) return;
+  await runTests(models.map(m => m.id));
+}
+
+async function runTests(ids) {
+  // build provider map
+  const provMap = {};
+  models.forEach(m => { if (ids.includes(m.id)) provMap[m.id] = m.provider; });
+  const prompt = document.getElementById('prompt-input').value.trim() || 'hi';
+  testing = true;
+  stopFlag = false;
+  setButtonsTesting(true);
+  const total = ids.length;
+  log(`\n${'='.repeat(50)}`);
+  log(`🚀 开始并发测试 ${total} 个模型，Prompt: 「${prompt}」`);
+  const maxConcurrent = Math.min(total, 6);
+  log(`⚡ 并发数: ${maxConcurrent}`);
+
+  let completed = 0;
+  let passCount = 0, failCount = 0;
+
+  async function testOne(id) {
+    if (stopFlag) return;
+    const provName = provMap[id] || '';
+    const prov = providers.find(p => p.name === provName);
+    if (!prov) { setModelStatus(id, 'skip'); log(`  ⚠ ${id}: 找不到提供商信息`, 'error'); return; }
+    setModelStatus(id, 'testing');
+    log(`🔍 ${id} @${provName}`);
+    try {
+      const start = Date.now();
+      const resp = await fetch(`${prov.url}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${prov.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: id, messages: [{ role: 'user', content: prompt }], max_tokens: 100, temperature: 0.7, stream: false }),
+        signal: AbortSignal.timeout(60000)
+      });
+      const elapsed = (Date.now() - start) / 1000;
+      if (resp.ok) {
+        const data = await resp.json();
+        const content = (data.choices?.[0]?.message?.content || '').trim();
+        setModelStatus(id, 'ok');
+        log(`  ✅ ${id} — ${elapsed.toFixed(1)}s`, 'success');
+        if (content) log(`     回复: ${content.slice(0, 200)}`);
+      } else {
+        setModelStatus(id, 'fail');
+        log(`  ❌ ${id} — HTTP ${resp.status}`, 'error');
+      }
+    } catch(e) {
+      setModelStatus(id, 'fail');
+      log(`  ❌ ${id} — ${e.message}`, 'error');
+    }
+  }
+
+  // concurrent
+  const queue = [...ids];
+  async function worker() {
+    while (queue.length > 0 && !stopFlag) {
+      const id = queue.shift();
+      await testOne(id);
+      completed++;
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < maxConcurrent; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  if (stopFlag) log('⏹ 测试已停止', 'error');
+  // count
+  document.querySelectorAll('#model-tbody tr').forEach(tr => {
+    const st = tr.querySelector('.td-status').textContent.trim();
+    if (st === '✅ 正常') passCount++;
+    else if (st === '❌ 失败') failCount++;
+  });
+  log(`\n📊 汇总: 通过 ${passCount}/${passCount+failCount}`);
+  log(`${'='.repeat(50)}\n`);
+  testing = false;
+  setButtonsTesting(false);
+}
+
+function stopTesting() {
+  stopFlag = true;
+  log('⏹ 正在停止测试...', 'error');
+}
+
+function setButtonsTesting(on) {
+  document.getElementById('btn-fetch').disabled = on;
+  document.getElementById('btn-test-sel').disabled = on;
+  document.getElementById('btn-test-all').disabled = on;
+  document.getElementById('btn-stop').disabled = !on;
+}
+
+// ── 初始化 ──
+loadConfig();
+renderProviders();
+if (providers.length) log(`📂 已自动加载 ${providers.length} 个提供商配置`);
+</script>
+</body>
+</html>

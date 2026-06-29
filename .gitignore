@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.spec
+providers_config.json
