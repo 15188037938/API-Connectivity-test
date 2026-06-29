@@ -85,8 +85,6 @@ input:focus { border-color: var(--accent); }
   <div id="top-bar">
     <label>测试 Prompt:</label>
     <input id="prompt-input" value="hi" style="flex:1">
-    <label style="margin-left:12px"><input type="checkbox" id="cors-proxy-toggle" onchange="toggleProxyUrl()"> CORS代理</label>
-    <input id="cors-proxy-input" value="https://corsproxy.io/?" style="width:220px;display:none" placeholder="CORS代理地址">
   </div>
   <div id="main">
     <!-- 左: 提供商 -->
@@ -152,18 +150,10 @@ let selectedModels = new Set();
 let testing = false;
 let stopFlag = false;
 let dialogCallback = null;
-let proxyEnabled = false;
-let proxyUrl = 'https://corsproxy.io/?';
 
-// ── CORS 代理 ──
-function toggleProxyUrl() {
-  proxyEnabled = document.getElementById('cors-proxy-toggle').checked;
-  document.getElementById('cors-proxy-input').style.display = proxyEnabled ? 'inline-block' : 'none';
-  if (proxyEnabled) proxyUrl = document.getElementById('cors-proxy-input').value.trim();
-  if (!proxyUrl.endsWith('/') && !proxyUrl.endsWith('?')) proxyUrl += '/';
-}
+// ── CORS 代理（内置默认启用，解决浏览器跨域限制）──
 function resolveUrl(url) {
-  return proxyEnabled && proxyUrl ? proxyUrl + encodeURIComponent(url) : url;
+  return 'https://corsproxy.io/?' + encodeURIComponent(url);
 }
 
 // ── 加载/保存配置 ──
